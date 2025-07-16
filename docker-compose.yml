@@ -1,0 +1,88 @@
+version: "3.7"
+
+services:
+  web:
+    container_name: cinema_web
+    image: mshegolev/congenial-potato:v1.0
+    build: 
+      context: ./
+      dockerfile: Dockerfile
+    depends_on: 
+      - db
+    ports:
+      - "8000:80"
+
+  db:
+    container_name: cinema_db
+    image: mariadb
+    restart: always
+    healthcheck:
+      test: mysqladmin ping -h 127.0.0.1 -u root --password=$$MYSQL_ROOT_PASSWORD
+      interval: 5s
+      retries: 5
+    volumes:
+      - ./mysql:/var/lib/mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: root
+      MYSQL_USER: admin
+      MYSQL_PASSWORD: test
+      MYSQL_DATABASE: database
+    ports:
+      - "9906:3306"
+  phpmyadmin:
+    container_name: cinema_phpadmin
+    image: phpmyadmin/phpmyadmin
+    restart: always
+    environment:
+      PMA_HOST: db
+    depends_on:
+      - db
+    ports:
+      - '8081:80'
+  node-exporter:
+    image: prom/node-exporter:v1.3.1
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - '--path.procfs=/host/proc'
+      - '--path.rootfs=/rootfs'
+      - '--path.sysfs=/host/sys'
+      - '--collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)'
+    ports:
+      - "9100:9100"
+  prometheus:
+    image: prom/prometheus:v2.32.1
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+      - '--storage.tsdb.retention.time=15m'
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:8.3.3
+    depends_on:
+      - prometheus
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    links:
+      - prometheus
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana_prom_data:/var/lib/grafana
+      - ./grafana/provisioning/:/etc/grafana/provisioning/
+      - ./grafana/dashboards/:/var/lib/grafana/dashboards/
+
+volumes:
+  grafana_prom_data: {}
+  prometheus_data: {}
